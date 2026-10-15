@@ -9,6 +9,7 @@ type Song = {
   duration: string
   accent: string
   audioUrl?: string
+  kind?: 'source' | 'instrumental'
 }
 
 const starterSongs: Song[] = [
@@ -38,6 +39,41 @@ const formatTime = (seconds: number) => {
   return `${minutes}:${remaining}`
 }
 
+const writeAscii = (view: DataView, offset: number, value: string) => {
+  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index))
+}
+
+const audioBufferToWav = (audioBuffer: AudioBuffer) => {
+  const channels = Math.min(audioBuffer.numberOfChannels, 2)
+  const frameCount = audioBuffer.length
+  const bytesPerSample = 2
+  const dataSize = frameCount * channels * bytesPerSample
+  const view = new DataView(new ArrayBuffer(44 + dataSize))
+  writeAscii(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeAscii(view, 8, 'WAVE')
+  writeAscii(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channels, true)
+  view.setUint32(24, audioBuffer.sampleRate, true)
+  view.setUint32(28, audioBuffer.sampleRate * channels * bytesPerSample, true)
+  view.setUint16(32, channels * bytesPerSample, true)
+  view.setUint16(34, 16, true)
+  writeAscii(view, 36, 'data')
+  view.setUint32(40, dataSize, true)
+  const channelData = Array.from({ length: channels }, (_, index) => audioBuffer.getChannelData(index))
+  let offset = 44
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][frame]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+      offset += 2
+    }
+  }
+  return new Blob([view], { type: 'audio/wav' })
+}
+
 function App() {
   const [songs, setSongs] = useState<Song[]>(starterSongs)
   const [currentId, setCurrentId] = useState(1)
@@ -57,6 +93,8 @@ function App() {
   const [duration, setDuration] = useState(269)
   const [elapsed, setElapsed] = useState(132)
   const [activeLyric, setActiveLyric] = useState(3)
+  const [processing, setProcessing] = useState(false)
+  const [notice, setNotice] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -138,6 +176,53 @@ function App() {
     setIsPlaying(Boolean(song.audioUrl))
   }
 
+  const showNotice = (message: string) => {
+    setNotice(message)
+    window.setTimeout(() => setNotice(''), 4500)
+  }
+
+  const createQuickInstrumental = async () => {
+    if (!currentSong?.audioUrl || currentSong.kind === 'instrumental') return
+    setProcessing(true)
+    try {
+      const response = await fetch(currentSong.audioUrl)
+      const bytes = await response.arrayBuffer()
+      const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!AudioContextConstructor) throw new Error('当前浏览器不支持 Web Audio')
+      const context = new AudioContextConstructor()
+      const source = await context.decodeAudioData(bytes)
+      const output = context.createBuffer(2, source.length, source.sampleRate)
+      const left = source.getChannelData(0)
+      const right = source.numberOfChannels > 1 ? source.getChannelData(1) : left
+      const outputLeft = output.getChannelData(0)
+      const outputRight = output.getChannelData(1)
+      for (let frame = 0; frame < source.length; frame += 1) {
+        // Center cancellation keeps much of the side information while reducing centered vocals.
+        outputLeft[frame] = (left[frame] - right[frame]) * 0.7
+        outputRight[frame] = (right[frame] - left[frame]) * 0.7
+      }
+      const instrumental: Song = {
+        ...currentSong,
+        id: Date.now(),
+        title: `${currentSong.title} · 伴奏`,
+        artist: '基础消音 · 本地',
+        duration: formatTime(source.duration),
+        kind: 'instrumental',
+        audioUrl: URL.createObjectURL(audioBufferToWav(output)),
+      }
+      setSongs((items) => [instrumental, ...items])
+      setQueue((items) => [...items, instrumental.id])
+      setCurrentId(instrumental.id)
+      setIsPlaying(false)
+      showNotice('基础伴奏已在本机生成，可继续试听或导出')
+      await context.close()
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '本地处理失败，请换一个音频文件重试')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   const togglePlay = () => {
     const audio = audioRef.current
     if (audio && currentSong?.audioUrl) {
@@ -185,6 +270,7 @@ function App() {
       album: '我的导入',
       duration: '--:--',
       accent: ['#d89cff', '#66d8c0', '#ff9b80'][index % 3],
+      kind: 'source' as const,
       audioUrl: URL.createObjectURL(file),
     }))
     setSongs((items) => [...imported, ...items])
@@ -214,7 +300,7 @@ function App() {
 
         <section className="content">
           <section className="hero panel">
-            <div className="hero-copy"><p className="eyebrow">NOW PLAYING</p><h1>{currentSong?.title ?? '选择一首歌开始'}</h1><p className="artist">{currentSong?.artist ?? 'LEoKTV 音乐库'} <span>·</span> {currentSong?.album ?? '私人歌房'}</p><div className="hero-tags"><span className="tag">高音质</span><span className="tag subtle">本地播放</span></div></div>
+            <div className="hero-copy"><p className="eyebrow">NOW PLAYING</p><h1>{currentSong?.title ?? '选择一首歌开始'}</h1><p className="artist">{currentSong?.artist ?? 'LEoKTV 音乐库'} <span>·</span> {currentSong?.album ?? '私人歌房'}</p><div className="hero-tags"><span className="tag">高音质</span><span className="tag subtle">本地播放</span>{currentSong?.audioUrl && currentSong.kind !== 'instrumental' && <button className="tag action-tag" onClick={createQuickInstrumental} disabled={processing}>{processing ? '处理中…' : '生成基础伴奏'}</button>}</div></div>
             <div className="album-art" style={{ '--accent': currentSong?.accent } as CSSProperties}><span className="vinyl">L</span><div className="art-caption">LEoKTV<br /><small>SESSION 01</small></div></div>
             <div className="hero-glow" style={{ background: currentSong?.accent }} />
           </section>
@@ -231,6 +317,7 @@ function App() {
         <aside className="queue panel"><div className="queue-header"><div><p className="eyebrow">UP NEXT</p><h2>播放队列 <span>{queueSongs.length}</span></h2></div><button className="more-button">•••</button></div><div className="queue-list">{queueSongs.map((song, index) => <div key={song.id} className={song.id === currentId ? 'queue-item current' : 'queue-item'} onClick={() => selectSong(song)}><span className="queue-index">{song.id === currentId ? '♫' : String(index + 1).padStart(2, '0')}</span><div className="queue-art" style={{ background: song.accent }} /><div className="queue-info"><strong>{song.title}</strong><span>{song.artist}</span></div><span className="queue-time">{song.duration}</span><button className="remove-queue" onClick={(event) => { event.stopPropagation(); removeFromQueue(song.id) }}>×</button></div>)}</div><button className="clear-button" onClick={() => setQueue([])}>清空队列</button><div className="queue-footer"><span className="wave-icon">▂▅▃▆</span><div><strong>私人歌房</strong><span>正在播放你的精选</span></div></div></aside>
       </main>
       <audio ref={audioRef} />
+      {notice && <div className="notice" role="status">{notice}</div>}
     </div>
   )
 }
