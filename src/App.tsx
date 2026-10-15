@@ -41,7 +41,14 @@ const formatTime = (seconds: number) => {
 function App() {
   const [songs, setSongs] = useState<Song[]>(starterSongs)
   const [currentId, setCurrentId] = useState(1)
-  const [queue, setQueue] = useState<number[]>([1, 3, 5])
+  const [queue, setQueue] = useState<number[]>(() => {
+    try {
+      const saved = window.localStorage.getItem('leoktv.queue')
+      return saved ? JSON.parse(saved) as number[] : [1, 3, 5]
+    } catch {
+      return [1, 3, 5]
+    }
+  })
   const [query, setQuery] = useState('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -59,6 +66,10 @@ function App() {
     [songs, query],
   )
   const queueSongs = queue.map((id) => songs.find((song) => song.id === id)).filter(Boolean) as Song[]
+
+  useEffect(() => {
+    window.localStorage.setItem('leoktv.queue', JSON.stringify(queue))
+  }, [queue])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -88,6 +99,39 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isPlaying || currentSong?.audioUrl) return
+    const timer = window.setInterval(() => {
+      setElapsed((current) => {
+        const next = current + 1
+        if (next >= duration) {
+          setIsPlaying(false)
+          setProgress(100)
+          return duration
+        }
+        setProgress((next / duration) * 100)
+        setActiveLyric(Math.min(lyricLines.length - 1, Math.floor(next / 22)))
+        return next
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [currentSong?.audioUrl, duration, isPlaying])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      if (target.matches('input, textarea, button')) return
+      if (event.code === 'Space') {
+        event.preventDefault()
+        togglePlay()
+      }
+      if (event.key === 'ArrowLeft') seekTo(progress - 5)
+      if (event.key === 'ArrowRight') seekTo(progress + 5)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
   const selectSong = (song: Song) => {
     setCurrentId(song.id)
     setQueue((items) => (items.includes(song.id) ? items : [...items, song.id]))
@@ -103,12 +147,25 @@ function App() {
     setIsPlaying((playing) => !playing)
   }
 
-  const seek = (event: ChangeEvent<HTMLInputElement>) => {
-    const next = Number(event.target.value)
-    setProgress(next)
-    const nextTime = (next / 100) * duration
+  const seekTo = (next: number) => {
+    const bounded = Math.max(0, Math.min(100, next))
+    setProgress(bounded)
+    const nextTime = (bounded / 100) * duration
     setElapsed(nextTime)
     if (audioRef.current?.duration) audioRef.current.currentTime = nextTime
+  }
+
+  const seek = (event: ChangeEvent<HTMLInputElement>) => seekTo(Number(event.target.value))
+
+  const playRelative = (direction: -1 | 1) => {
+    const ids = queue.length ? queue : songs.map((song) => song.id)
+    const currentIndex = Math.max(0, ids.indexOf(currentId))
+    const nextIndex = (currentIndex + direction + ids.length) % ids.length
+    const nextSong = songs.find((song) => song.id === ids[nextIndex])
+    if (nextSong) {
+      setCurrentId(nextSong.id)
+      setIsPlaying(true)
+    }
   }
 
   const changeVolume = (event: ChangeEvent<HTMLInputElement>) => {
@@ -164,7 +221,7 @@ function App() {
 
           <section className="player panel">
             <div className="progress-row"><span>{formatTime(elapsed)}</span><input aria-label="播放进度" type="range" min="0" max="100" value={progress} onChange={seek} style={{ '--value': `${progress}%` } as CSSProperties} /><span>{formatTime(duration)}</span></div>
-            <div className="controls"><button className="control-button" aria-label="随机播放">⤨</button><button className="control-button" aria-label="上一首">◀◀</button><button className="play-button" onClick={togglePlay} aria-label={isPlaying ? '暂停' : '播放'}>{isPlaying ? 'Ⅱ' : '▶'}</button><button className="control-button" aria-label="下一首">▶▶</button><button className="control-button" aria-label="循环播放">↻</button></div>
+            <div className="controls"><button className="control-button" aria-label="随机播放">⤨</button><button className="control-button" onClick={() => playRelative(-1)} aria-label="上一首">◀◀</button><button className="play-button" onClick={togglePlay} aria-label={isPlaying ? '暂停' : '播放'}>{isPlaying ? 'Ⅱ' : '▶'}</button><button className="control-button" onClick={() => playRelative(1)} aria-label="下一首">▶▶</button><button className="control-button" aria-label="循环播放">↻</button></div>
             <div className="volume"><button className="volume-icon" onClick={() => { setIsMuted((muted) => !muted); if (audioRef.current) audioRef.current.muted = !isMuted }}>{isMuted || volume === 0 ? '♩' : '◖'}</button><input aria-label="音量" type="range" min="0" max="100" value={isMuted ? 0 : volume} onChange={changeVolume} style={{ '--value': `${isMuted ? 0 : volume}%` } as CSSProperties} /></div>
           </section>
 
