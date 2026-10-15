@@ -1,0 +1,20 @@
+[package]
+name = "leoktv"
+version = "0.1.0"
+description = "A local-first AI karaoke player"
+authors = ["LEoKTV"]
+edition = "2021"
+
+[lib]
+name = "leoktv_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.3" }
+
+[dependencies]
+tauri = { version = "2.12.4" }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+default = ["custom-protocol"]

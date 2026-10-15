@@ -16,6 +16,16 @@ npm run build
 npm run preview
 ```
 
+## Windows / Android 预览版
+
+项目使用 Tauri 2 包装桌面和移动端。推送 `v*` 标签后，GitHub Actions 会构建 Windows NSIS 安装包和 Android APK，并自动创建一个预发布版本。Android APK 当前用于个人侧载测试，尚未配置发布签名；正式分发前需要固定 Android keystore 和 Windows 签名证书。
+
+本地查看原生构建依赖：
+
+```bash
+npm run tauri info
+```
+
 音乐文件只在浏览器当前会话中通过 `URL.createObjectURL` 播放，不会上传到服务器。
 
 种子歌曲用于演示界面和队列交互，没有内置音频文件；导入本地音频后会使用浏览器的本地播放器。按 `Space` 播放/暂停，使用左右方向键快进或回退 5 秒。

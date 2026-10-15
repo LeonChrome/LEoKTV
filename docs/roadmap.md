@@ -7,6 +7,7 @@
 - 歌曲搜索、播放队列、歌词展示、进度和音量控制
 - 队列记忆和 Space/方向键快捷操作
 - 生产构建和本地 Vite 启动检查
+- Tauri 2 Windows/Android 外壳和标签发布工作流
 
 ## 下一步：本地音频核心
 
@@ -22,6 +23,8 @@
 2. 在 Android 接入 ONNX Runtime 的 CPU/NNAPI 后端。
 3. 将当前界面原型迁移到 Flutter，或通过 Tauri/Android bridge 复用前端。
 4. 增加 Android 分区存储、后台任务、通知和缓存空间管理。
+
+当前 GitHub Actions 会在 `v*` 标签上构建 Windows NSIS 安装包和 Android APK，并生成预发布版本。Android 产物暂时是个人侧载测试包，原生构建需要 CI 提供 Rust、JDK、Android SDK 和 NDK。
 
 ## 来源适配器
 
