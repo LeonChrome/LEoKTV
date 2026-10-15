@@ -71,8 +71,8 @@ jobs:
         run: npm ci --no-audit --fund=false
       - name: Initialize Android project
         run: npm run tauri -- android init --ci --skip-targets-install
-      - name: Build APK
-        run: npm run tauri -- android build --apk
+      - name: Build debug APK
+        run: npm run tauri -- android build --debug --apk
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -104,7 +104,7 @@ jobs:
           name: LEoKTV ${{ github.ref_name }}
           body: |
             Windows NSIS installer and Android APK for private testing.
-            The Android APK is currently unsigned and intended for sideloading.
+            The Android APK is debug-signed for private sideloading.
           generate_release_notes: true
           prerelease: true
           fail_on_unmatched_files: true
