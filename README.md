@@ -18,7 +18,7 @@ npm run preview
 
 ## Windows / Android 预览版
 
-项目使用 Tauri 2 包装桌面和移动端。推送 `v*` 标签后，GitHub Actions 会构建 Windows NSIS 安装包和 Android debug APK，并自动创建一个预发布版本。Android APK 使用 CI 的 debug keystore，适合个人侧载测试；正式分发前需要固定 Android keystore 和 Windows 签名证书。
+项目使用 Tauri 2 包装桌面和移动端。推送 `v*` 标签后，GitHub Actions 会构建 Windows NSIS 安装包和 Android arm64 debug APK，并自动创建一个预发布版本。Android APK 使用 CI 的 debug keystore，适合个人侧载测试；正式分发前需要固定 Android keystore 和 Windows 签名证书。
 
 本地查看原生构建依赖：
 
