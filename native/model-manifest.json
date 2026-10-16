@@ -1,0 +1,14 @@
+{
+  "models": [
+    {
+      "id": "uvr-mdx-net-inst-hq-4",
+      "filename": "UVR-MDX-NET-Inst_HQ_4.onnx",
+      "url": "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR-MDX-NET-Inst_HQ_4.onnx",
+      "bytes": 59074342,
+      "sha256": "3c4b5b9b05090fdf238f38ba5046813982d50e2a652e9cb3324ea79720c3c9c8",
+      "md5": "0f2a6bc5b49d87d64728ee40e23bceb1",
+      "source": "TRvlvr/model_repo",
+      "license": "Review the model repository terms before redistribution"
+    }
+  ]
+}

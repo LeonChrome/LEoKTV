@@ -1,6 +1,6 @@
 # LEoKTV 本地分离 worker
 
-这里记录 Windows 首个高质量分离验证版本的 worker 边界。`mdx_worker.py` 是可独立运行的协议原型，尚未随当前预发布安装包分发；浏览器/Tauri 当前仍使用本机 Web Audio 的基础消音预览。
+这里记录 Windows 首个高质量分离验证版本的 worker 边界。Windows 发布工作流会用 NumPy/SciPy/ONNX Runtime 和 PyInstaller 打包 `mdx-worker.exe`，模型仍在首次使用时按需下载并校验。Android 暂不包含该 worker，继续使用本地基础预览。
 
 第一版 worker 使用本地 ONNX MDX 2-stem 模型验证效果，推荐默认模型为 `UVR_MDXNET_Main.onnx`。模型文件按需下载到应用数据目录，下载到 `.partial` 文件，完成 SHA-256 校验后再原子改名。模型、FFmpeg 和 worker 都不接受未经校验的远程文件。
 

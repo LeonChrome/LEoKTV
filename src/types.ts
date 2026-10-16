@@ -11,6 +11,8 @@ export type Song = {
   duration: string
   accent: string
   audioUrl?: string
+  sourcePath?: string
+  nativePath?: string
   kind?: 'source' | 'instrumental'
   lyrics?: LyricLine[]
 }

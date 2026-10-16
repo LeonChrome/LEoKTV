@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
 import type { LyricLine, Song } from './types'
 import { loadStoredSongs, saveSongBlob, updateStoredLyrics } from './libraryStore'
+import { readMdxAudio, separateMdx, supportsMdx } from './mdx'
 
 const EMPTY_LYRICS: LyricLine[] = []
 
@@ -228,8 +229,44 @@ function App() {
     window.setTimeout(() => setNotice(''), 4500)
   }
 
+  const createNativeInstrumental = async () => {
+    if (!currentSong?.audioUrl) return
+    setProcessing(true)
+    try {
+      const source = await fetch(currentSong.audioUrl).then((response) => response.blob())
+      const result = await separateMdx(source, (event) => {
+        if (event.stage === 'inference' && typeof event.value === 'number') {
+          showNotice(`AI 分离处理中 ${Math.round(event.value * 100)}%`)
+        }
+      })
+      const instrumentalBlob = await readMdxAudio(result.instrumental)
+      const instrumental: Song = {
+        ...currentSong,
+        id: createSongId(),
+        title: `${currentSong.title} · AI伴奏`,
+        artist: 'MDX · 本地 CPU',
+        kind: 'instrumental',
+        audioUrl: URL.createObjectURL(instrumentalBlob),
+        nativePath: result.instrumental,
+      }
+      setSongs((items) => [instrumental, ...items])
+      setQueue((items) => [...items, instrumental.id])
+      setCurrentId(instrumental.id)
+      setIsPlaying(false)
+      showNotice(result.cached ? '已命中 MDX 本地缓存' : 'MDX 伴奏已生成并缓存到本机')
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : 'MDX 分离失败')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   const createQuickInstrumental = async () => {
     if (!currentSong?.audioUrl || currentSong.kind === 'instrumental') return
+    if (supportsMdx()) {
+      await createNativeInstrumental()
+      return
+    }
     setProcessing(true)
     try {
       const response = await fetch(currentSong.audioUrl)
@@ -367,7 +404,7 @@ function App() {
 
         <section className="content">
           <section className="hero panel">
-            <div className="hero-copy"><p className="eyebrow">NOW PLAYING</p><h1>{currentSong?.title ?? '选择一首歌开始'}</h1><p className="artist">{currentSong?.artist ?? 'LEoKTV 音乐库'} <span>·</span> {currentSong?.album ?? '私人歌房'}</p><div className="hero-tags"><span className="tag">高音质</span><span className="tag subtle">本地播放</span>{currentSong?.audioUrl && currentSong.kind !== 'instrumental' && <button className="tag action-tag" onClick={createQuickInstrumental} disabled={processing}>{processing ? '处理中…' : '生成基础伴奏'}</button>}</div></div>
+            <div className="hero-copy"><p className="eyebrow">NOW PLAYING</p><h1>{currentSong?.title ?? '选择一首歌开始'}</h1><p className="artist">{currentSong?.artist ?? 'LEoKTV 音乐库'} <span>·</span> {currentSong?.album ?? '私人歌房'}</p><div className="hero-tags"><span className="tag">高音质</span><span className="tag subtle">本地播放</span>{currentSong?.audioUrl && currentSong.kind !== 'instrumental' && <button className="tag action-tag" onClick={createQuickInstrumental} disabled={processing}>{processing ? '处理中…' : supportsMdx() ? 'AI 伴奏分离' : '快速试听消音'}</button>}</div></div>
             <div className="album-art" style={{ '--accent': currentSong?.accent } as CSSProperties}><span className="vinyl">L</span><div className="art-caption">LEoKTV<br /><small>SESSION 01</small></div></div>
             <div className="hero-glow" style={{ background: currentSong?.accent }} />
           </section>
