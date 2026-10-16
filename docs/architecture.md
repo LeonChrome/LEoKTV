@@ -25,6 +25,8 @@ cancelJob(jobId)
 getArtifacts(jobId) -> vocals | instrumental | karaokeMix
 ```
 
+浏览器/Tauri 当前版本先用 IndexedDB 保存用户导入的音频 Blob 和 LRC 元数据，重启应用后恢复本地曲库。AI 处理接入后，Windows 首版会采用独立的本地 worker 进程验证 MDX ONNX 链路，Tauri 只负责任务、进度和缓存目录；这样可以在没有 Rust ONNX 运行时的开发机上先验证模型效果，再将同一协议迁移到 Android。
+
 每个处理任务记录输入文件的 SHA-256、模型名称和版本、参数、设备后端以及输出文件。相同输入、相同模型和相同参数可以直接命中缓存；更换模型后则生成新的处理版本。
 
 ## 模型适配

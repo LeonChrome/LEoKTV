@@ -1,22 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
-
-type Song = {
-  id: number
-  title: string
-  artist: string
-  album: string
-  duration: string
-  accent: string
-  audioUrl?: string
-  kind?: 'source' | 'instrumental'
-  lyrics?: LyricLine[]
-}
-
-type LyricLine = {
-  time: number
-  text: string
-}
+import type { LyricLine, Song } from './types'
+import { loadStoredSongs, saveSongBlob, updateStoredLyrics } from './libraryStore'
 
 const EMPTY_LYRICS: LyricLine[] = []
 
@@ -76,6 +61,8 @@ const lyricIndexAt = (lines: LyricLine[], time: number) => {
   }
   return active
 }
+
+const createSongId = () => Date.now() * 1_000 + Math.floor(Math.random() * 1_000)
 
 const writeAscii = (view: DataView, offset: number, value: string) => {
   for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index))
@@ -149,6 +136,18 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem('leoktv.queue', JSON.stringify(queue))
   }, [queue])
+
+  useEffect(() => {
+    let mounted = true
+    void loadStoredSongs().then((storedSongs) => {
+      if (!mounted || !storedSongs.length) return
+      setSongs((items) => {
+        const storedIds = new Set(storedSongs.map((song) => song.id))
+        return [...storedSongs, ...items.filter((song) => !storedIds.has(song.id))]
+      })
+    })
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     activeLyricRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -249,14 +248,15 @@ function App() {
         outputLeft[frame] = (left[frame] - right[frame]) * 0.7
         outputRight[frame] = (right[frame] - left[frame]) * 0.7
       }
+      const instrumentalBlob = audioBufferToWav(output)
       const instrumental: Song = {
         ...currentSong,
-        id: Date.now(),
+        id: createSongId(),
         title: `${currentSong.title} · 伴奏`,
         artist: '基础消音 · 本地',
         duration: formatTime(source.duration),
         kind: 'instrumental',
-        audioUrl: URL.createObjectURL(audioBufferToWav(output)),
+        audioUrl: URL.createObjectURL(instrumentalBlob),
       }
       setSongs((items) => [instrumental, ...items])
       setQueue((items) => [...items, instrumental.id])
@@ -312,7 +312,7 @@ function App() {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
     const imported = files.map((file, index) => ({
-      id: Date.now() + index,
+      id: createSongId() + index,
       title: file.name.replace(/\.[^/.]+$/, ''),
       artist: '本地音乐',
       album: '我的导入',
@@ -322,6 +322,8 @@ function App() {
       audioUrl: URL.createObjectURL(file),
     }))
     setSongs((items) => [...imported, ...items])
+    void Promise.all(imported.map((song, index) => saveSongBlob(song, files[index])))
+      .catch(() => showNotice('歌曲已加入当前会话，但本地曲库保存失败'))
     selectSong(imported[0])
     event.target.value = ''
   }
@@ -336,6 +338,7 @@ function App() {
       return
     }
     setSongs((items) => items.map((song) => song.id === currentSong.id ? { ...song, lyrics: lines } : song))
+    void updateStoredLyrics(currentSong.id, lines)
     setActiveLyric(lyricIndexAt(lines, elapsed))
     showNotice(`已导入 ${lines.length} 行歌词，并绑定到《${currentSong.title}》`)
     event.target.value = ''
