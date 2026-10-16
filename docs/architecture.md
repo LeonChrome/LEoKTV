@@ -29,7 +29,9 @@ getArtifacts(jobId) -> vocals | instrumental | karaokeMix
 
 ## 模型适配
 
-第一批候选模型为 Demucs/HTDemucs、MDX 系列和 RoFormer 系列。实际集成前需要分别确认代码许可证、模型权重许可证和再分发条件。模型应通过统一适配器接入，以便在 Windows 上使用 CPU/DirectML/CUDA，在 Android 上使用 CPU/NNAPI/GPU，并提供明确的回退路径。
+第一阶段优先验证 ONNX 的 MDX 2-stem 模型（例如 UVR-MDX-NET 系列）。它比把 PyTorch/Demucs 直接塞进移动端更容易控制包体积和运行时依赖。Demucs/HTDemucs 和 RoFormer 作为后续高质量选项保留。代码许可证、模型权重许可证和再分发条件必须分别核对，不能因为推理代码开源就默认可以打包模型。
+
+推荐的处理链是：FFmpeg 解码为 44.1 kHz stereo float32，模型按 6–12 秒窗口、25–50% 重叠分块推理，再做 overlap-add，最后由 FFmpeg 输出 vocals、instrumental 和 karaoke mix。Windows 先使用 ONNX Runtime CPU，Android 先支持 arm64 CPU/NNAPI。模型权重不放入安装包，按需下载到本地模型目录，并在下载后做 SHA-256 校验；缓存键包含源文件哈希、模型版本和处理参数。
 
 ## 数据边界
 

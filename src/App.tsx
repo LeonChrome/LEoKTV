@@ -10,10 +10,27 @@ type Song = {
   accent: string
   audioUrl?: string
   kind?: 'source' | 'instrumental'
+  lyrics?: LyricLine[]
 }
 
+type LyricLine = {
+  time: number
+  text: string
+}
+
+const EMPTY_LYRICS: LyricLine[] = []
+
 const starterSongs: Song[] = [
-  { id: 1, title: '晴天', artist: '周杰伦', album: '叶惠美', duration: '04:29', accent: '#f19a71' },
+  { id: 1, title: '晴天', artist: '周杰伦', album: '叶惠美', duration: '04:29', accent: '#f19a71', lyrics: [
+    { time: 0, text: '故事的小黄花' },
+    { time: 22, text: '从出生那年就飘着' },
+    { time: 44, text: '童年的荡秋千' },
+    { time: 66, text: '随记忆一直晃到现在' },
+    { time: 88, text: 'Re So So Si Do Si La' },
+    { time: 110, text: 'So La Si Si Si Si La Si La So' },
+    { time: 132, text: '吹着前奏望着天空' },
+    { time: 154, text: '我想起花瓣试着掉落' },
+  ] },
   { id: 2, title: '起风了', artist: '买辣椒也用券', album: '起风了', duration: '05:12', accent: '#a58dff' },
   { id: 3, title: '光年之外', artist: '邓紫棋', album: '摩天动物园', duration: '03:55', accent: '#57c4d9' },
   { id: 4, title: '夜曲', artist: '周杰伦', album: '十一月的萧邦', duration: '03:46', accent: '#dd729c' },
@@ -21,22 +38,43 @@ const starterSongs: Song[] = [
   { id: 6, title: '我怀念的', artist: '孙燕姿', album: '逆光', duration: '04:47', accent: '#83b7d4' },
 ]
 
-const lyricLines = [
-  '故事的小黄花',
-  '从出生那年就飘着',
-  '童年的荡秋千',
-  '随记忆一直晃到现在',
-  'Re So So Si Do Si La',
-  'So La Si Si Si Si La Si La So',
-  '吹着前奏望着天空',
-  '我想起花瓣试着掉落',
-]
-
 const formatTime = (seconds: number) => {
   if (!Number.isFinite(seconds)) return '00:00'
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0')
   const remaining = Math.floor(seconds % 60).toString().padStart(2, '0')
   return `${minutes}:${remaining}`
+}
+
+const parseLrc = (content: string): LyricLine[] => {
+  const parsed: LyricLine[] = []
+  let offsetMs = 0
+  for (const rawLine of content.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const offset = rawLine.match(/^\[offset:([+-]?\d+)\]/i)
+    if (offset) {
+      offsetMs = Number(offset[1]) || 0
+      continue
+    }
+    const matches = [...rawLine.matchAll(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g)]
+    if (!matches.length) continue
+    const text = rawLine.replace(/\[(\d{1,3}):(\d{2})(?:[.:]\d{1,3})?\]/g, '').trim()
+    if (!text) continue
+    for (const match of matches) {
+      const fraction = match[3] ?? '0'
+      const milliseconds = fraction.length === 1 ? Number(fraction) * 100 : fraction.length === 2 ? Number(fraction) * 10 : Number(fraction.slice(0, 3))
+      const time = Math.max(0, Number(match[1]) * 60_000 + Number(match[2]) * 1_000 + milliseconds + offsetMs) / 1_000
+      parsed.push({ time, text })
+    }
+  }
+  return parsed.sort((a, b) => a.time - b.time || a.text.localeCompare(b.text))
+}
+
+const lyricIndexAt = (lines: LyricLine[], time: number) => {
+  let active = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].time <= time) active = index
+    else break
+  }
+  return active
 }
 
 const writeAscii = (view: DataView, offset: number, value: string) => {
@@ -92,13 +130,16 @@ function App() {
   const [progress, setProgress] = useState(78)
   const [duration, setDuration] = useState(269)
   const [elapsed, setElapsed] = useState(132)
-  const [activeLyric, setActiveLyric] = useState(3)
+  const [activeLyric, setActiveLyric] = useState(lyricIndexAt(starterSongs[0].lyrics ?? EMPTY_LYRICS, 132))
   const [processing, setProcessing] = useState(false)
   const [notice, setNotice] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const lyricsFileRef = useRef<HTMLInputElement>(null)
+  const activeLyricRef = useRef<HTMLParagraphElement>(null)
 
   const currentSong = songs.find((song) => song.id === currentId) ?? songs[0]
+  const currentLyrics = currentSong?.lyrics ?? EMPTY_LYRICS
   const filteredSongs = useMemo(
     () => songs.filter((song) => `${song.title}${song.artist}`.toLowerCase().includes(query.toLowerCase())),
     [songs, query],
@@ -108,6 +149,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem('leoktv.queue', JSON.stringify(queue))
   }, [queue])
+
+  useEffect(() => {
+    activeLyricRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [activeLyric, currentId])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -126,7 +171,7 @@ function App() {
       setElapsed(audio.currentTime)
       setDuration(audio.duration || 269)
       setProgress(audio.duration ? (audio.currentTime / audio.duration) * 100 : 0)
-      setActiveLyric(Math.min(lyricLines.length - 1, Math.floor(audio.currentTime / 22)))
+      setActiveLyric(lyricIndexAt(currentLyrics, audio.currentTime))
     }
     const onEnded = () => setIsPlaying(false)
     audio.addEventListener('timeupdate', onTime)
@@ -135,7 +180,7 @@ function App() {
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [])
+  }, [currentLyrics])
 
   useEffect(() => {
     if (!isPlaying || currentSong?.audioUrl) return
@@ -148,12 +193,12 @@ function App() {
           return duration
         }
         setProgress((next / duration) * 100)
-        setActiveLyric(Math.min(lyricLines.length - 1, Math.floor(next / 22)))
+        setActiveLyric(lyricIndexAt(currentLyrics, next))
         return next
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [currentSong?.audioUrl, duration, isPlaying])
+  }, [currentLyrics, currentSong?.audioUrl, duration, isPlaying])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -173,6 +218,9 @@ function App() {
   const selectSong = (song: Song) => {
     setCurrentId(song.id)
     setQueue((items) => (items.includes(song.id) ? items : [...items, song.id]))
+    setElapsed(0)
+    setProgress(0)
+    setActiveLyric(lyricIndexAt(song.lyrics ?? EMPTY_LYRICS, 0))
     setIsPlaying(Boolean(song.audioUrl))
   }
 
@@ -278,6 +326,21 @@ function App() {
     event.target.value = ''
   }
 
+  const importLyrics = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !currentSong) return
+    const lines = parseLrc(await file.text())
+    if (!lines.length) {
+      showNotice('没有识别到带时间戳的歌词，请选择标准 .lrc 文件')
+      event.target.value = ''
+      return
+    }
+    setSongs((items) => items.map((song) => song.id === currentSong.id ? { ...song, lyrics: lines } : song))
+    setActiveLyric(lyricIndexAt(lines, elapsed))
+    showNotice(`已导入 ${lines.length} 行歌词，并绑定到《${currentSong.title}》`)
+    event.target.value = ''
+  }
+
   const removeFromQueue = (id: number) => setQueue((items) => items.filter((item) => item !== id))
 
   return (
@@ -296,6 +359,7 @@ function App() {
           <div className="library-section category"><p className="section-label">分类</p><button className="side-link"><span className="category-icon purple" />华语流行</button><button className="side-link"><span className="category-icon orange" />欧美金曲</button><button className="side-link"><span className="category-icon blue" />轻音乐</button></div>
           <button className="import-button" onClick={() => fileRef.current?.click()}><span>＋</span> 导入本地音乐</button>
           <input ref={fileRef} className="hidden-input" type="file" accept="audio/*" multiple onChange={importFiles} />
+          <input ref={lyricsFileRef} className="hidden-input" type="file" accept=".lrc,.txt,text/plain" onChange={importLyrics} />
         </aside>
 
         <section className="content">
@@ -311,7 +375,7 @@ function App() {
             <div className="volume"><button className="volume-icon" onClick={() => { setIsMuted((muted) => !muted); if (audioRef.current) audioRef.current.muted = !isMuted }}>{isMuted || volume === 0 ? '♩' : '◖'}</button><input aria-label="音量" type="range" min="0" max="100" value={isMuted ? 0 : volume} onChange={changeVolume} style={{ '--value': `${isMuted ? 0 : volume}%` } as CSSProperties} /></div>
           </section>
 
-          <section className="lower-grid"><div className="lyrics panel"><div className="panel-title"><div><p className="eyebrow">LYRICS</p><h2>歌词</h2></div><button className="small-button">展开 ↗</button></div><div className="lyrics-list">{lyricLines.map((line, index) => <p key={line} className={index === activeLyric ? 'lyric active' : 'lyric'}>{line}</p>)}</div></div><div className="tips panel"><div className="tips-icon">✦</div><p className="eyebrow">LEoKTV TIP</p><h3>把房间变成<br /><span>你的舞台</span></h3><p className="tip-copy">导入喜欢的歌曲，和朋友一起分享你的歌单。</p><button onClick={() => fileRef.current?.click()}>开始导入 <span>→</span></button></div></section>
+          <section className="lower-grid"><div className="lyrics panel"><div className="panel-title"><div><p className="eyebrow">LYRICS</p><h2>歌词</h2></div><button className="small-button" onClick={() => lyricsFileRef.current?.click()}>{currentLyrics.length ? '替换 LRC' : '导入 LRC'}</button></div><div className="lyrics-list">{currentLyrics.length ? currentLyrics.map((line, index) => <p ref={index === activeLyric ? activeLyricRef : undefined} key={`${line.time}-${index}`} className={index === activeLyric ? 'lyric active' : 'lyric'}>{line.text}</p>) : <div className="lyrics-empty"><strong>暂无歌词</strong><span>选择一个 .lrc 文件导入后会自动同步</span></div>}</div></div><div className="tips panel"><div className="tips-icon">✦</div><p className="eyebrow">LEoKTV TIP</p><h3>把房间变成<br /><span>你的舞台</span></h3><p className="tip-copy">导入喜欢的歌曲，和朋友一起分享你的歌单。</p><button onClick={() => fileRef.current?.click()}>开始导入 <span>→</span></button></div></section>
         </section>
 
         <aside className="queue panel"><div className="queue-header"><div><p className="eyebrow">UP NEXT</p><h2>播放队列 <span>{queueSongs.length}</span></h2></div><button className="more-button">•••</button></div><div className="queue-list">{queueSongs.map((song, index) => <div key={song.id} className={song.id === currentId ? 'queue-item current' : 'queue-item'} onClick={() => selectSong(song)}><span className="queue-index">{song.id === currentId ? '♫' : String(index + 1).padStart(2, '0')}</span><div className="queue-art" style={{ background: song.accent }} /><div className="queue-info"><strong>{song.title}</strong><span>{song.artist}</span></div><span className="queue-time">{song.duration}</span><button className="remove-queue" onClick={(event) => { event.stopPropagation(); removeFromQueue(song.id) }}>×</button></div>)}</div><button className="clear-button" onClick={() => setQueue([])}>清空队列</button><div className="queue-footer"><span className="wave-icon">▂▅▃▆</span><div><strong>私人歌房</strong><span>正在播放你的精选</span></div></div></aside>
