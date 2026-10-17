@@ -56,15 +56,23 @@ fn run_worker(app: tauri::AppHandle, audio: Vec<u8>, on_event: Channel<Value>) -
     // Keep reading stderr while stdout streams progress. PyInstaller startup
     // failures otherwise leave the UI with only a generic "no output" error.
     let stderr_thread = child.stderr.take().map(|stderr| std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = BufReader::new(stderr).read_to_string(&mut text);
-        text
+        let mut bytes = Vec::new();
+        let _ = BufReader::new(stderr).read_to_end(&mut bytes);
+        String::from_utf8_lossy(&bytes).into_owned()
     }));
     let mut completed = None;
     let mut failure = None;
-    for line in BufReader::new(stdout).lines() {
-        let line = line.map_err(|e| e.to_string())?;
-        if let Ok(event) = serde_json::from_str::<Value>(&line) {
+    // The worker protocol is UTF-8 JSON, but native dependencies can write
+    // diagnostic bytes to the same Windows pipe. Read raw lines and decode
+    // lossily so one non-UTF-8 diagnostic cannot abort an otherwise valid job.
+    let mut stdout_reader = BufReader::new(stdout);
+    let mut raw_line = Vec::new();
+    loop {
+        raw_line.clear();
+        let count = stdout_reader.read_until(b'\n', &mut raw_line).map_err(|e| e.to_string())?;
+        if count == 0 { break; }
+        let line = String::from_utf8_lossy(&raw_line);
+        if let Ok(event) = serde_json::from_str::<Value>(line.trim()) {
             if event["event"] == "complete" { completed = Some(event.clone()); }
             if event["event"] == "error" { failure = event["error"].as_str().map(str::to_owned); }
             let _ = on_event.send(event);
