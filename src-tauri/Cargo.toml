@@ -1,6 +1,6 @@
 [package]
 name = "leoktv"
-version = "0.1.8"
+version = "0.1.9"
 description = "A local-first AI karaoke player"
 authors = ["LEoKTV"]
 edition = "2021"

@@ -38,6 +38,28 @@ jobs:
           pyinstaller --clean --noconfirm --onefile --name mdx-worker native/mdx_worker.py --paths native --hidden-import mdx_engine --collect-all soundfile --collect-all imageio_ffmpeg
           New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
           Copy-Item dist/mdx-worker.exe src-tauri/binaries/mdx-worker-x86_64-pc-windows-msvc.exe
+      - name: Smoke test packaged MDX worker
+        shell: pwsh
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP 'leoktv-mdx-smoke'
+          New-Item -ItemType Directory -Force $smokeRoot | Out-Null
+          $env:LEOKTV_SMOKE_ROOT = $smokeRoot
+          @'
+          import math, os, struct, wave
+          path = os.path.join(os.environ["LEOKTV_SMOKE_ROOT"], "input.wav")
+          with wave.open(path, "wb") as audio:
+              audio.setnchannels(2)
+              audio.setsampwidth(2)
+              audio.setframerate(44100)
+              for index in range(44100):
+                  sample = int(12000 * math.sin(2 * math.pi * 440 * index / 44100))
+                  audio.writeframes(struct.pack("<hh", sample, sample))
+          '@ | Set-Content -Path smoke.py -Encoding utf8
+          python smoke.py
+          $request = @{ op = 'process'; root = $smokeRoot; input = (Join-Path $smokeRoot 'input.wav'); id = 'ci-smoke' } | ConvertTo-Json -Compress
+          $output = & dist/mdx-worker.exe --once $request 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "MDX worker smoke test failed: $output" }
+          if ($output -notmatch '"event"\s*:\s*"complete"') { throw "MDX worker produced no complete event: $output" }
       - name: Build Windows installer
         run: npm run tauri -- build --bundles nsis
       - name: Upload Windows installer

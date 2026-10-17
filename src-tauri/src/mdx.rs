@@ -27,8 +27,17 @@ fn run_worker(app: tauri::AppHandle, audio: Vec<u8>, on_event: Channel<Value>) -
     let key = format!("{:x}", Sha256::digest(&audio));
     let input = root.join("input").join(format!("{key}.audio"));
     std::fs::write(&input, audio).map_err(|e| e.to_string())?;
-    let binaries = app.path().resource_dir().map_err(|e| e.to_string())?.join("binaries");
-    let worker = [binaries.join("mdx-worker.exe"), binaries.join("mdx-worker-x86_64-pc-windows-msvc.exe")]
+    let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
+    // Tauri versions/platform bundlers have used both `resources/binaries` and
+    // the resource root for external binaries. Accept both layouts so an
+    // otherwise valid installer does not fail before the worker can report a
+    // useful error.
+    let worker = [
+        resources.join("binaries/mdx-worker.exe"),
+        resources.join("binaries/mdx-worker-x86_64-pc-windows-msvc.exe"),
+        resources.join("mdx-worker.exe"),
+        resources.join("mdx-worker-x86_64-pc-windows-msvc.exe"),
+    ]
         .into_iter().find(|path| path.is_file())
         .ok_or("安装包中缺少 MDX 运行时，请重新安装 Windows MDX 版")?;
     let request = json!({"op":"process", "root":root, "input":input});
