@@ -177,7 +177,6 @@ function App() {
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'available' | 'latest' | 'error'>('idle')
   const [latestRelease, setLatestRelease] = useState<ReleaseInfo | null>(null)
   const updateCheckRef = useRef<Promise<void> | null>(null)
-  const autoUpdateCheckRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const lyricsFileRef = useRef<HTMLInputElement>(null)
@@ -322,8 +321,6 @@ function App() {
   }
 
   useEffect(() => {
-    if (autoUpdateCheckRef.current) return
-    autoUpdateCheckRef.current = true
     const timer = window.setTimeout(() => { void checkUpdates() }, 700)
     return () => window.clearTimeout(timer)
   }, [])
@@ -508,7 +505,7 @@ function App() {
         <nav className="top-nav"><button className="nav-item active">音乐库</button><button className="nav-item">我的歌单</button><button className="nav-item">最近播放</button></nav>
         <div className="top-actions"><span className="online-dot" /> <span>本地模式</span><button className={`update-check-button${updateState === 'available' ? ' available' : ''}`} onClick={() => { void checkUpdates(true) }} disabled={updateState === 'checking'} title={`当前版本 v${APP_VERSION}`}>{updateState === 'checking' ? '检查中…' : updateState === 'available' ? '有新版本' : updateState === 'error' ? '重试更新' : '检查更新'}</button><button className="avatar">L</button></div>
       </header>
-      {latestRelease && updateState === 'available' && <section className="update-banner" role="status"><div><strong>发现 LEoKTV 新版本 v{latestRelease.version}</strong>{latestRelease.prerelease && <span className="update-prerelease">预发布</span>}<small>{latestRelease.title} · 已包含在 GitHub Release 中</small></div><div className="update-actions"><button onClick={() => openReleasePage(latestRelease.url)}>打开下载页 <span>↗</span></button><button className="update-dismiss" aria-label="关闭更新提示" onClick={() => { setLatestRelease(null); setUpdateState('idle') }}>×</button></div></section>}
+      {latestRelease && updateState === 'available' && <section className="update-banner" role="status"><div><strong>发现 LEoKTV 新版本 v{latestRelease.version}</strong>{latestRelease.prerelease && <span className="update-prerelease">预发布</span>}<small>{latestRelease.title} · GitHub Release</small></div><div className="update-actions"><button onClick={() => openReleasePage(latestRelease.downloadUrl)}>下载 Windows 安装包 <span>↗</span></button><button className="update-dismiss" aria-label="关闭更新提示" onClick={() => { setLatestRelease(null); setUpdateState('idle') }}>×</button></div></section>}
 
       <main className="workspace">
         <aside className="sidebar panel">

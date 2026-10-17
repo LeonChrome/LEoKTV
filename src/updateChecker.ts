@@ -15,6 +15,7 @@ export type ReleaseInfo = {
   tagName: string
   title: string
   url: string
+  downloadUrl: string
   prerelease: boolean
   publishedAt: string | null
 }
@@ -34,6 +35,7 @@ type GithubRelease = {
   draft?: unknown
   published_at?: unknown
   created_at?: unknown
+  assets?: unknown
 }
 
 const parseVersion = (value: string): ParsedVersion | null => {
@@ -86,6 +88,16 @@ const releaseFromGithub = (release: GithubRelease): { info: ReleaseInfo; parsed:
       tagName,
       title: typeof release.name === 'string' && release.name.trim() ? release.name.trim() : tagName,
       url,
+      downloadUrl: (() => {
+        if (!Array.isArray(release.assets)) return url
+        const installer = release.assets.find((asset) => {
+          if (!asset || typeof asset !== 'object') return false
+          const name = 'name' in asset && typeof asset.name === 'string' ? asset.name : ''
+          return /_x64-setup\.exe$/i.test(name)
+        })
+        if (!installer || typeof installer !== 'object' || !('browser_download_url' in installer) || typeof installer.browser_download_url !== 'string') return url
+        return installer.browser_download_url
+      })(),
       prerelease: Boolean(release.prerelease) || parsed.prerelease.length > 0,
       publishedAt: typeof release.published_at === 'string'
         ? release.published_at
