@@ -62,6 +62,17 @@ jobs:
           if ($output -notmatch '"event"\s*:\s*"complete"') { throw "MDX worker produced no complete event: $output" }
       - name: Build Windows installer
         run: npm run tauri -- build --bundles nsis
+      - name: Smoke test installer reinstall and upgrade path
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+          $installed = Join-Path $env:LOCALAPPDATA 'LEoKTV\LEoKTV.exe'
+          if (!(Test-Path $installed)) { throw "Installer did not place LEoKTV at $installed" }
+          $firstVersion = (Get-Item $installed).VersionInfo.ProductVersion
+          Start-Process -FilePath $installer -ArgumentList '/S' -Wait
+          if (!(Test-Path $installed)) { throw "Second installer run removed the application" }
+          Write-Host "Installer upgrade path verified: $firstVersion"
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
@@ -135,6 +146,7 @@ jobs:
           body: |
             Windows NSIS installer and Android APK for private testing.
             The Android APK is debug-signed for private sideloading.
+            Run a newer Windows installer over the existing installation to upgrade in place; uninstalling first is not required.
           generate_release_notes: true
           prerelease: true
           fail_on_unmatched_files: true

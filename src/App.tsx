@@ -224,6 +224,13 @@ function App() {
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
+    audio.volume = volume / 100
+    audio.muted = isMuted
+  }, [volume, isMuted])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
     const onTime = () => {
       setElapsed(audio.currentTime)
       setDuration(audio.duration || 269)
@@ -351,6 +358,7 @@ function App() {
         nativePath: result.instrumental,
       }
       setSongs((items) => [instrumental, ...items])
+      void saveSongBlob(instrumental, instrumentalBlob).catch(() => showNotice('伴奏已生成，但保存到本地曲库失败'))
       setQueue((items) => [...items, instrumental.id])
       setCurrentId(instrumental.id)
       setIsPlaying(false)
