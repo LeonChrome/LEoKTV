@@ -3,6 +3,7 @@ import type { ChangeEvent, CSSProperties } from 'react'
 import type { LyricLine, Song } from './types'
 import { loadStoredSongs, saveSongBlob, updateStoredLyrics } from './libraryStore'
 import { readMdxAudio, separateMdx, supportsMdx } from './mdx'
+import { APP_VERSION, checkForUpdates, type ReleaseInfo } from './updateChecker'
 
 const EMPTY_LYRICS: LyricLine[] = []
 
@@ -173,6 +174,10 @@ function App() {
   const [processing, setProcessing] = useState(false)
   const [mdxStatus, setMdxStatus] = useState<MdxStatus | null>(null)
   const [notice, setNotice] = useState('')
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'available' | 'latest' | 'error'>('idle')
+  const [latestRelease, setLatestRelease] = useState<ReleaseInfo | null>(null)
+  const updateCheckRef = useRef<Promise<void> | null>(null)
+  const autoUpdateCheckRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const lyricsFileRef = useRef<HTMLInputElement>(null)
@@ -279,6 +284,46 @@ function App() {
   const showNotice = (message: string) => {
     setNotice(message)
     window.setTimeout(() => setNotice(''), 4500)
+  }
+
+  const checkUpdates = (manual = false) => {
+    if (updateCheckRef.current) return updateCheckRef.current
+    setUpdateState('checking')
+    const operation = (async () => {
+      try {
+        const result = await checkForUpdates()
+        if (result.updateAvailable && result.latest) {
+          setLatestRelease(result.latest)
+          setUpdateState('available')
+          if (manual) showNotice(`发现新版本 v${result.latest.version}${result.latest.prerelease ? '（预发布）' : ''}`)
+        } else {
+          setLatestRelease(null)
+          setUpdateState('latest')
+          if (manual) showNotice(`当前版本 v${result.currentVersion} 已是最新版本`)
+        }
+      } catch (error) {
+        setUpdateState('error')
+        if (manual) showNotice(errorText(error))
+      }
+    })()
+    updateCheckRef.current = operation
+    void operation.then(
+      () => { if (updateCheckRef.current === operation) updateCheckRef.current = null },
+      () => { if (updateCheckRef.current === operation) updateCheckRef.current = null },
+    )
+    return operation
+  }
+
+  useEffect(() => {
+    if (autoUpdateCheckRef.current) return
+    autoUpdateCheckRef.current = true
+    const timer = window.setTimeout(() => { void checkUpdates() }, 700)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  const openReleasePage = (url: string) => {
+    const opened = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!opened) showNotice('无法自动打开浏览器，请复制更新地址到浏览器访问')
   }
 
   const createNativeInstrumental = async () => {
@@ -453,8 +498,9 @@ function App() {
       <header className="topbar">
         <div className="brand"><span className="brand-mark">L</span><span>LEo<span>KTV</span></span></div>
         <nav className="top-nav"><button className="nav-item active">音乐库</button><button className="nav-item">我的歌单</button><button className="nav-item">最近播放</button></nav>
-        <div className="top-actions"><span className="online-dot" /> <span>本地模式</span><button className="avatar">L</button></div>
+        <div className="top-actions"><span className="online-dot" /> <span>本地模式</span><button className={`update-check-button${updateState === 'available' ? ' available' : ''}`} onClick={() => { void checkUpdates(true) }} disabled={updateState === 'checking'} title={`当前版本 v${APP_VERSION}`}>{updateState === 'checking' ? '检查中…' : updateState === 'available' ? '有新版本' : updateState === 'error' ? '重试更新' : '检查更新'}</button><button className="avatar">L</button></div>
       </header>
+      {latestRelease && updateState === 'available' && <section className="update-banner" role="status"><div><strong>发现 LEoKTV 新版本 v{latestRelease.version}</strong>{latestRelease.prerelease && <span className="update-prerelease">预发布</span>}<small>{latestRelease.title} · 已包含在 GitHub Release 中</small></div><div className="update-actions"><button onClick={() => openReleasePage(latestRelease.url)}>打开下载页 <span>↗</span></button><button className="update-dismiss" aria-label="关闭更新提示" onClick={() => { setLatestRelease(null); setUpdateState('idle') }}>×</button></div></section>}
 
       <main className="workspace">
         <aside className="sidebar panel">

@@ -1,0 +1,41 @@
+.update-check-button {
+  padding: 6px 9px;
+  border: 1px solid #39344b;
+  border-radius: 6px;
+  color: #aaa0c7;
+  background: #171522;
+  font-size: 10px;
+  white-space: nowrap;
+  transition: border-color .2s, color .2s, background .2s;
+}
+.update-check-button:hover:not(:disabled) { border-color: #7966b3; color: #d8cbff; }
+.update-check-button:disabled { cursor: wait; opacity: .6; }
+.update-check-button.available { border-color: #7058b2; color: #e0d7ff; background: #2c2345; }
+.update-banner {
+  max-width: 1440px;
+  margin: 14px auto -4px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #5a4c83;
+  border-radius: 10px;
+  color: #ded5f3;
+  background: linear-gradient(100deg, rgba(46, 36, 70, .94), rgba(29, 25, 45, .94));
+  box-shadow: 0 8px 22px rgba(0,0,0,.18);
+  font-size: 11px;
+}
+.update-banner strong { font-weight: 650; }
+.update-banner small { display: block; margin-top: 4px; color: #9990ad; font-size: 9px; }
+.update-prerelease { display: inline-block; margin-left: 8px; padding: 2px 5px; border-radius: 4px; color: #e6b8ff; background: #49335d; font-size: 8px; }
+.update-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.update-actions button { padding: 7px 10px; border: 1px solid #66558e; border-radius: 6px; color: #d7caff; background: #302448; font-size: 10px; }
+.update-actions button:hover { border-color: #a38adf; background: #3b2e5b; }
+.update-actions .update-dismiss { padding: 3px 7px; border-color: transparent; color: #8c849b; background: transparent; font-size: 17px; }
+.update-actions .update-dismiss:hover { color: #e5ddf5; background: transparent; }
+@media (max-width: 700px) {
+  .update-check-button { padding: 5px 7px; font-size: 9px; }
+  .update-banner { margin-top: 10px; align-items: flex-start; flex-direction: column; }
+  .update-actions { width: 100%; justify-content: flex-end; }
+}

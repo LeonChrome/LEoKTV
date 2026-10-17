@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' blob: data:; media-src 'self' blob: data: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self' blob: data:; connect-src 'self' https://api.github.com https://github.com; media-src 'self' blob: data: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "bundle": {
