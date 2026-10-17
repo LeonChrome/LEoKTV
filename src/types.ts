@@ -11,6 +11,8 @@ export type Song = {
   duration: string
   accent: string
   audioUrl?: string
+  /** The local bytes backing audioUrl; kept in memory to avoid refetching blob URLs. */
+  audioBlob?: Blob
   sourcePath?: string
   nativePath?: string
   kind?: 'source' | 'instrumental'

@@ -340,7 +340,19 @@ function App() {
       detail: '音频会留在本机处理。',
     })
     try {
-      const source = await fetch(currentSong.audioUrl).then((response) => response.blob())
+      let source: Blob
+      if (currentSong.audioBlob) {
+        source = currentSong.audioBlob
+      } else {
+        let response: Response
+        try {
+          response = await fetch(currentSong.audioUrl!)
+        } catch {
+          throw new Error('无法读取本地音频，请重新导入这首歌后重试')
+        }
+        if (!response.ok) throw new Error(`无法读取本地音频（HTTP ${response.status}）`)
+        source = await response.blob()
+      }
       const result = await separateMdx(source, (event) => {
         setMdxStatus(mdxStatusForEvent(event))
       })
@@ -352,6 +364,7 @@ function App() {
         artist: 'MDX · 本地 CPU',
         kind: 'instrumental',
         audioUrl: URL.createObjectURL(instrumentalBlob),
+        audioBlob: instrumentalBlob,
         nativePath: result.instrumental,
       }
       setSongs((items) => [instrumental, ...items])
@@ -384,7 +397,17 @@ function App() {
     }
     setProcessing(true)
     try {
-      const response = await fetch(currentSong.audioUrl)
+      let response: Response
+      if (currentSong.audioBlob) {
+        response = new Response(currentSong.audioBlob)
+      } else {
+        try {
+          response = await fetch(currentSong.audioUrl!)
+        } catch {
+          throw new Error('无法读取本地音频，请重新导入这首歌后重试')
+        }
+      }
+      if (!response.ok) throw new Error(`无法读取本地音频（HTTP ${response.status}）`)
       const bytes = await response.arrayBuffer()
       const AudioContextConstructor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
       if (!AudioContextConstructor) throw new Error('当前浏览器不支持 Web Audio')
@@ -409,6 +432,7 @@ function App() {
         duration: formatTime(source.duration),
         kind: 'instrumental',
         audioUrl: URL.createObjectURL(instrumentalBlob),
+        audioBlob: instrumentalBlob,
       }
       setSongs((items) => [instrumental, ...items])
       setQueue((items) => [...items, instrumental.id])
@@ -472,6 +496,7 @@ function App() {
       accent: ['#d89cff', '#66d8c0', '#ff9b80'][index % 3],
       kind: 'source' as const,
       audioUrl: URL.createObjectURL(file),
+      audioBlob: file,
     }))
     setSongs((items) => [...imported, ...items])
     void Promise.all(imported.map((song, index) => saveSongBlob(song, files[index])))

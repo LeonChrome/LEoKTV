@@ -4,7 +4,7 @@ const DB_NAME = 'leoktv-library'
 const DB_VERSION = 1
 const SONG_STORE = 'songs'
 
-type StoredSong = Omit<Song, 'audioUrl'> & { blob: Blob }
+type StoredSong = Omit<Song, 'audioUrl' | 'audioBlob'> & { blob: Blob }
 
 const openLibrary = () => new Promise<IDBDatabase>((resolve, reject) => {
   if (!('indexedDB' in window)) {
@@ -22,7 +22,7 @@ export const saveSongBlob = async (song: Song, blob: Blob) => {
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(SONG_STORE, 'readwrite')
-      const { audioUrl: _audioUrl, ...metadata } = song
+      const { audioUrl: _audioUrl, audioBlob: _audioBlob, ...metadata } = song
       transaction.objectStore(SONG_STORE).put({ ...metadata, blob } satisfies StoredSong)
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error ?? new Error('无法保存本地歌曲'))
@@ -65,7 +65,7 @@ export const loadStoredSongs = async (): Promise<Song[]> => {
         request.onsuccess = () => resolve(request.result as StoredSong[])
         request.onerror = () => reject(request.error ?? new Error('无法读取本地曲库'))
       })
-      return records.map(({ blob, ...song }) => ({ ...song, audioUrl: URL.createObjectURL(blob) }))
+      return records.map(({ blob, ...song }) => ({ ...song, audioUrl: URL.createObjectURL(blob), audioBlob: blob }))
     } finally {
       db.close()
     }
