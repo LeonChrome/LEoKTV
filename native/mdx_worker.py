@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 import subprocess
 from pathlib import Path
@@ -44,9 +45,15 @@ def ensure_model(root, progress):
                 stream.write(chunk)
                 progress('download', total / MODEL_BYTES)
         if total != MODEL_BYTES or sha256_file(partial) != MODEL_SHA256:
-            raise ValueError('模型校验失败，请重试下载')
+            raise ValueError('MDX 模型校验失败，下载内容不完整，请重试')
         os.replace(partial, target)
         return target
+    except urllib.error.HTTPError as error:
+        raise ValueError(f'MDX 模型下载失败（HTTP {error.code}），请检查网络后重试') from error
+    except urllib.error.URLError as error:
+        raise ValueError('无法连接 MDX 模型下载服务器，请检查网络后重试') from error
+    except TimeoutError as error:
+        raise ValueError('MDX 模型下载超时，请检查网络后重试') from error
     finally:
         partial.unlink(missing_ok=True)
 

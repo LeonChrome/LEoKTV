@@ -1,4 +1,4 @@
-use std::{io::{BufRead, BufReader}, sync::atomic::{AtomicBool, Ordering}};
+use std::{io::{BufRead, BufReader, Read}, sync::atomic::{AtomicBool, Ordering}};
 use tauri::{ipc::Channel, Manager};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -36,7 +36,7 @@ fn run_worker(app: tauri::AppHandle, audio: Vec<u8>, on_event: Channel<Value>) -
     command.args(["--once", &request.to_string()])
         .current_dir(&root)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -44,6 +44,13 @@ fn run_worker(app: tauri::AppHandle, audio: Vec<u8>, on_event: Channel<Value>) -
     }
     let mut child = command.spawn().map_err(|e| format!("无法启动 MDX: {e}"))?;
     let stdout = child.stdout.take().ok_or("无法读取 MDX 输出")?;
+    // Keep reading stderr while stdout streams progress. PyInstaller startup
+    // failures otherwise leave the UI with only a generic "no output" error.
+    let stderr_thread = child.stderr.take().map(|stderr| std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = BufReader::new(stderr).read_to_string(&mut text);
+        text
+    }));
     let mut completed = None;
     let mut failure = None;
     for line in BufReader::new(stdout).lines() {
@@ -55,11 +62,28 @@ fn run_worker(app: tauri::AppHandle, audio: Vec<u8>, on_event: Channel<Value>) -
         }
     }
     let status = child.wait().map_err(|e| e.to_string())?;
+    let stderr = stderr_thread
+        .and_then(|thread| thread.join().ok())
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
     // Source PCM is transient; model and verified separated stems remain cached.
     let _ = std::fs::remove_file(&input);
-    if let Some(message) = failure { return Err(message); }
-    if !status.success() { return Err(format!("MDX 进程异常退出: {status}")); }
-    completed.ok_or_else(|| "MDX 没有生成输出文件".into())
+    if let Some(message) = failure {
+        return Err(if stderr.is_empty() { message } else { format!("{message}（{stderr}）") });
+    }
+    if !status.success() {
+        return Err(if stderr.is_empty() {
+            format!("MDX 进程异常退出: {status}")
+        } else {
+            format!("MDX 进程异常退出: {status}：{stderr}")
+        });
+    }
+    completed.ok_or_else(|| if stderr.is_empty() {
+        "MDX 没有生成输出文件，请重试".into()
+    } else {
+        format!("MDX 没有生成输出文件：{stderr}")
+    })
 }
 
 #[tauri::command]

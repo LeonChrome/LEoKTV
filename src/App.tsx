@@ -6,6 +6,57 @@ import { readMdxAudio, separateMdx, supportsMdx } from './mdx'
 
 const EMPTY_LYRICS: LyricLine[] = []
 
+type MdxStatus = {
+  stage: string
+  value?: number
+  text: string
+  detail?: string
+  error?: boolean
+}
+
+const mdxStatusForEvent = (event: { event: string; stage?: string; value?: number }): MdxStatus => {
+  const value = typeof event.value === 'number' ? Math.max(0, Math.min(1, event.value)) : undefined
+  if (event.event === 'complete') {
+    return { stage: 'complete', value: 1, text: '分离完成，正在载入伴奏…' }
+  }
+  if (event.stage === 'download') {
+    return {
+      stage: 'download',
+      value,
+      text: '正在下载 MDX 模型',
+      detail: '首次使用需要下载约 56 MB，模型会保存在本机，音频不会上传。',
+    }
+  }
+  if (event.stage === 'verify-model') {
+    return {
+      stage: 'verify-model',
+      value,
+      text: '正在检查本地 MDX 模型',
+      detail: '只使用已校验的本地模型。',
+    }
+  }
+  if (event.stage === 'inference') {
+    return {
+      stage: 'inference',
+      value,
+      text: '正在本地分离人声和伴奏',
+      detail: 'CPU 推理需要一些时间，请保持窗口打开。',
+    }
+  }
+  return { stage: event.stage ?? event.event, value, text: '正在准备 MDX 分离…' }
+}
+
+const errorText = (error: unknown) => {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'MDX 分离失败'
+  return message.replace(/^Error:\s*/i, '').trim().slice(0, 420) || 'MDX 分离失败'
+}
+
 const starterSongs: Song[] = [
   { id: 1, title: '晴天', artist: '周杰伦', album: '叶惠美', duration: '04:29', accent: '#f19a71', lyrics: [
     { time: 0, text: '故事的小黄花' },
@@ -120,6 +171,7 @@ function App() {
   const [elapsed, setElapsed] = useState(132)
   const [activeLyric, setActiveLyric] = useState(lyricIndexAt(starterSongs[0].lyrics ?? EMPTY_LYRICS, 132))
   const [processing, setProcessing] = useState(false)
+  const [mdxStatus, setMdxStatus] = useState<MdxStatus | null>(null)
   const [notice, setNotice] = useState('')
   const audioRef = useRef<HTMLAudioElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -232,12 +284,16 @@ function App() {
   const createNativeInstrumental = async () => {
     if (!currentSong?.audioUrl) return
     setProcessing(true)
+    setMdxStatus({
+      stage: 'prepare',
+      value: 0,
+      text: '正在准备 MDX 分离…',
+      detail: '音频会留在本机处理。',
+    })
     try {
       const source = await fetch(currentSong.audioUrl).then((response) => response.blob())
       const result = await separateMdx(source, (event) => {
-        if (event.stage === 'inference' && typeof event.value === 'number') {
-          showNotice(`AI 分离处理中 ${Math.round(event.value * 100)}%`)
-        }
+        setMdxStatus(mdxStatusForEvent(event))
       })
       const instrumentalBlob = await readMdxAudio(result.instrumental)
       const instrumental: Song = {
@@ -254,8 +310,17 @@ function App() {
       setCurrentId(instrumental.id)
       setIsPlaying(false)
       showNotice(result.cached ? '已命中 MDX 本地缓存' : 'MDX 伴奏已生成并缓存到本机')
+      setMdxStatus({
+        stage: 'success',
+        value: 1,
+        text: result.cached ? '已载入本地缓存伴奏' : 'MDX 伴奏已生成',
+        detail: '生成的伴奏已加入播放队列。',
+      })
+      window.setTimeout(() => setMdxStatus(null), 3500)
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : 'MDX 分离失败')
+      const message = errorText(error)
+      setMdxStatus({ stage: 'error', text: 'MDX 分离失败', detail: message, error: true })
+      showNotice(message)
     } finally {
       setProcessing(false)
     }
@@ -302,7 +367,7 @@ function App() {
       showNotice('基础伴奏已在本机生成，可继续试听或导出')
       await context.close()
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : '本地处理失败，请换一个音频文件重试')
+      showNotice(errorText(error) || '本地处理失败，请换一个音频文件重试')
     } finally {
       setProcessing(false)
     }
@@ -421,6 +486,12 @@ function App() {
         <aside className="queue panel"><div className="queue-header"><div><p className="eyebrow">UP NEXT</p><h2>播放队列 <span>{queueSongs.length}</span></h2></div><button className="more-button">•••</button></div><div className="queue-list">{queueSongs.map((song, index) => <div key={song.id} className={song.id === currentId ? 'queue-item current' : 'queue-item'} onClick={() => selectSong(song)}><span className="queue-index">{song.id === currentId ? '♫' : String(index + 1).padStart(2, '0')}</span><div className="queue-art" style={{ background: song.accent }} /><div className="queue-info"><strong>{song.title}</strong><span>{song.artist}</span></div><span className="queue-time">{song.duration}</span><button className="remove-queue" onClick={(event) => { event.stopPropagation(); removeFromQueue(song.id) }}>×</button></div>)}</div><button className="clear-button" onClick={() => setQueue([])}>清空队列</button><div className="queue-footer"><span className="wave-icon">▂▅▃▆</span><div><strong>私人歌房</strong><span>正在播放你的精选</span></div></div></aside>
       </main>
       <audio ref={audioRef} />
+      {mdxStatus && <div className={`mdx-status${mdxStatus.error ? ' error' : ''}`} role="status" aria-live="polite">
+        <div className="mdx-status-heading"><span className="mdx-status-dot" /><strong>{mdxStatus.text}</strong>{typeof mdxStatus.value === 'number' && mdxStatus.stage !== 'verify-model' && mdxStatus.stage !== 'prepare' && <span className="mdx-status-percent">{Math.round(mdxStatus.value * 100)}%</span>}</div>
+        {mdxStatus.detail && <p>{mdxStatus.detail}</p>}
+        {typeof mdxStatus.value === 'number' && mdxStatus.stage !== 'complete' && mdxStatus.stage !== 'success' && <div className="mdx-progress"><span style={{ width: `${Math.round(mdxStatus.value * 100)}%` }} /></div>}
+        {mdxStatus.error && <small>请检查网络后重试；如果仍然失败，请把这条错误信息反馈给我。</small>}
+      </div>}
       {notice && <div className="notice" role="status">{notice}</div>}
     </div>
   )
